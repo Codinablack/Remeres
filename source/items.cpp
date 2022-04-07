@@ -52,6 +52,8 @@ ItemType::ItemType() :
 	defense(0),
 	armor(0),
 	charges(0),
+	slot_position(SLOTP_HAND),
+	weapon_type(WEAPON_NONE),
 	client_chargeable(false),
 	extra_chargeable(false),
 	ignoreLook(false),
@@ -567,12 +569,16 @@ bool ItemDatabase::loadFromOtbVer3(BinaryNode* itemNode, wxString& error, wxArra
 		t->group = ItemGroup_t(u8);
 
 		switch(t->group) {
-			case  ITEM_GROUP_NONE:
+			case ITEM_GROUP_NONE:
 			case ITEM_GROUP_GROUND:
 			case ITEM_GROUP_SPLASH:
 			case ITEM_GROUP_FLUID:
 				break;
-			case ITEM_GROUP_CONTAINER: t->type = ITEM_TYPE_CONTAINER; break;
+			case ITEM_GROUP_CONTAINER:
+				t->type = ITEM_TYPE_CONTAINER;
+				break;
+			case ITEM_GROUP_PODIUM:
+				t->type = ITEM_TYPE_PODIUM;
 				break;
 			default:
 				warnings.push_back("Unknown item group declaration");
@@ -677,6 +683,19 @@ bool ItemDatabase::loadFromOtbVer3(BinaryNode* itemNode, wxString& error, wxArra
 						warnings.push_back("Invalid item type property (5)");
 
 					t->alwaysOnTopOrder = u8;
+					break;
+				}
+
+				case ITEM_ATTR_CLASSIFICATION: {
+					if (datalen != sizeof(uint8_t)) {
+						warnings.push_back("items.otb: Unexpected data length of item classification block (Should be 1 byte)");
+						break;
+					}
+
+					if (!itemNode->getU8(u8))
+						warnings.push_back("Invalid item type property (5)");
+
+					t->classification = u8;
 					break;
 				}
 
@@ -813,6 +832,8 @@ bool ItemDatabase::loadItemFromGameXml(pugi::xml_node itemNode, int id)
 				it.type = ITEM_TYPE_BED;
 			} else if (typeValue == "key") {
 				it.type = ITEM_TYPE_KEY;
+			} else if (typeValue == "podium") {
+				it.type = ITEM_TYPE_PODIUM;
 			}
 		} else if(key == "name") {
 			if((attribute = itemAttributesNode.attribute("value"))) {
@@ -834,9 +855,57 @@ bool ItemDatabase::loadItemFromGameXml(pugi::xml_node itemNode, int id)
 			if((attribute = itemAttributesNode.attribute("value"))) {
 				it.armor = attribute.as_int();
 			}
-		} else if(key == "defense") {
-			if((attribute = itemAttributesNode.attribute("value"))) {
+		} else if (key == "defense") {
+			if ((attribute = itemAttributesNode.attribute("value"))) {
 				it.defense = attribute.as_int();
+			}
+		} else if (key == "slottype") {
+			if ((attribute = itemAttributesNode.attribute("value"))) {
+				std::string typeValue = attribute.as_string();
+				if (typeValue == "head") {
+					it.slot_position |= SLOTP_HEAD;
+				} else if (typeValue == "body") {
+					it.slot_position |= SLOTP_ARMOR;
+				} else if (typeValue == "legs") {
+					it.slot_position |= SLOTP_LEGS;
+				} else if (typeValue == "feet") {
+					it.slot_position |= SLOTP_FEET;
+				} else if (typeValue == "backpack") {
+					it.slot_position |= SLOTP_BACKPACK;
+				} else if (typeValue == "two-handed") {
+					it.slot_position |= SLOTP_TWO_HAND;
+				} else if (typeValue == "right-hand") {
+					it.slot_position &= ~SLOTP_LEFT;
+				} else if (typeValue == "left-hand") {
+					it.slot_position &= ~SLOTP_RIGHT;
+				} else if (typeValue == "necklace") {
+					it.slot_position |= SLOTP_NECKLACE;
+				} else if (typeValue == "ring") {
+					it.slot_position |= SLOTP_RING;
+				} else if (typeValue == "ammo") {
+					it.slot_position |= SLOTP_AMMO;
+				} else if (typeValue == "hand") {
+					it.slot_position |= SLOTP_HAND;
+				}
+			}
+		} else if(key == "weapontype") {
+			if ((attribute = itemAttributesNode.attribute("value"))) {
+				std::string typeValue = attribute.as_string();
+				if (typeValue == "sword") {
+					it.weapon_type = WEAPON_SWORD;
+				} else if (typeValue == "club") {
+					it.weapon_type = WEAPON_CLUB;
+				} else if (typeValue == "axe") {
+					it.weapon_type = WEAPON_AXE;
+				} else if (typeValue == "shield") {
+					it.weapon_type = WEAPON_SHIELD;
+				} else if (typeValue == "distance") {
+					it.weapon_type = WEAPON_DISTANCE;
+				} else if (typeValue == "wand") {
+					it.weapon_type = WEAPON_WAND;
+				} else if (typeValue == "ammunition") {
+					it.weapon_type = WEAPON_AMMO;
+				}
 			}
 		} else if(key == "rotateto") {
 			if((attribute = itemAttributesNode.attribute("value"))) {

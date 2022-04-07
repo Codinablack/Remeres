@@ -37,10 +37,12 @@
 // Old Properties Window
 
 BEGIN_EVENT_TABLE(OldPropertiesWindow, wxDialog)
-	EVT_SET_FOCUS(OldPropertiesWindow::OnFocusChange)
-	EVT_BUTTON(wxID_OK, OldPropertiesWindow::OnClickOK)
-	EVT_BUTTON(wxID_CANCEL, OldPropertiesWindow::OnClickCancel)
+EVT_SET_FOCUS(OldPropertiesWindow::OnFocusChange)
+EVT_BUTTON(wxID_OK, OldPropertiesWindow::OnClickOK)
+EVT_BUTTON(wxID_CANCEL, OldPropertiesWindow::OnClickCancel)
 END_EVENT_TABLE()
+
+static constexpr int OUTFIT_COLOR_MAX = 133;
 
 OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, const Tile* tile_parent, Item* item, wxPoint pos) :
 	ObjectPropertiesWindowBase(win_parent, "Item Properties", map, tile_parent, item, pos),
@@ -49,6 +51,7 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 	action_id_field(nullptr),
 	unique_id_field(nullptr),
 	door_id_field(nullptr),
+	tier_field(nullptr),
 	depot_id_field(nullptr),
 	splash_type_field(nullptr),
 	text_field(nullptr),
@@ -151,7 +154,7 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 		topsizer->Add(boxsizer, wxSizerFlags(0).Expand().Border(wxALL, 20));
 
 		//SetSize(220, 310);
-	} else if(edit_item->isSplash() || edit_item->isFluidContainer()) {
+	} else if (edit_item->isSplash() || edit_item->isFluidContainer()) {
 		// Splash
 		wxSizer* boxsizer = newd wxStaticBoxSizer(wxVERTICAL, this, "Splash Properties");
 
@@ -165,17 +168,17 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 
 		// Splash types
 		splash_type_field = newd wxChoice(this, wxID_ANY);
-		if(edit_item->isFluidContainer()) {
+		if (edit_item->isFluidContainer()) {
 			splash_type_field->Append(wxstr(Item::LiquidID2Name(LIQUID_NONE)), newd int32_t(LIQUID_NONE));
 		}
 
-		for(SplashType splashType = LIQUID_FIRST; splashType != LIQUID_LAST; ++splashType) {
+		for (SplashType splashType = LIQUID_FIRST; splashType != LIQUID_LAST; ++splashType) {
 			splash_type_field->Append(wxstr(Item::LiquidID2Name(splashType)), newd int32_t(splashType));
 		}
 
-		if(item->getSubtype()) {
+		if (item->getSubtype()) {
 			const std::string& what = Item::LiquidID2Name(item->getSubtype());
-			if(what == "Unknown") {
+			if (what == "Unknown") {
 				splash_type_field->Append(wxstr(Item::LiquidID2Name(LIQUID_NONE)), newd int32_t(LIQUID_NONE));
 			}
 			splash_type_field->SetStringSelection(wxstr(what));
@@ -244,6 +247,7 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 		// Normal item
 		Door* door = dynamic_cast<Door*>(edit_item);
 		Teleport* teleport = dynamic_cast<Teleport*>(edit_item);
+		Podium* podium = dynamic_cast<Podium*>(edit_item);
 
 		wxString description;
 		if(door) {
@@ -251,16 +255,21 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 			description = "Door Properties";
 		} else if(teleport) {
 			description = "Teleport Properties";
+		} else if(podium) {
+			description = "Podium Properties";
 		} else {
 			description = "Item Properties";
 		}
 
 		wxSizer* boxsizer = newd wxStaticBoxSizer(wxVERTICAL, this, description);
 
+		// unused(?)
+		/*
 		int num_items = 4;
 		//if(item->canHoldDescription()) num_items += 1;
 		if(door) num_items += 1;
 		if(teleport) num_items += 1;
+		*/
 
 		wxFlexGridSizer* subsizer = newd wxFlexGridSizer(2, 10, 10);
 		subsizer->AddGrowableCol(1);
@@ -285,6 +294,18 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 		subsizer->Add(newd wxStaticText(this, wxID_ANY, "Unique ID"));
 		unique_id_field = newd wxSpinCtrl(this, wxID_ANY, i2ws(edit_item->getUniqueID()), wxDefaultPosition, wxSize(-1, 20), wxSP_ARROW_KEYS, 0, 0xFFFF, edit_item->getUniqueID());
 		subsizer->Add(unique_id_field, wxSizerFlags(1).Expand());
+
+
+		// item classification (12.81+)
+		if (g_items.MajorVersion >= 3 && g_items.MinorVersion >= 60 && (edit_item->getClassification() > 0 || edit_item->isWeapon() || edit_item->isWearableEquipment())) {
+			subsizer->Add(newd wxStaticText(this, wxID_ANY, "Classification"));
+			subsizer->Add(newd wxStaticText(this, wxID_ANY, i2ws(item->getClassification())));
+
+			// item iter
+			subsizer->Add(newd wxStaticText(this, wxID_ANY, "Tier"));
+			tier_field = newd wxSpinCtrl(this, wxID_ANY, i2ws(edit_item->getTier()), wxDefaultPosition, wxSize(-1, 20), wxSP_ARROW_KEYS, 0, 0xFF, edit_item->getTier());
+			subsizer->Add(tier_field, wxSizerFlags(1).Expand());
+		}
 
 		/*
 		if(item->canHoldDescription()) {
@@ -317,11 +338,108 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 			subsizer->Add(possizer, wxSizerFlags(1).Expand());
 		}
 
-		boxsizer->Add(subsizer, wxSizerFlags(1).Expand());
+		if (podium) {
+			// direction
+			subsizer->Add(newd wxStaticText(this, wxID_ANY, "Direction"));
+			direction_field = newd wxChoice(this, wxID_ANY);
+
+			for (Direction dir = DIRECTION_FIRST; dir <= DIRECTION_LAST; ++dir) {
+				direction_field->Append(wxstr(Creature::DirID2Name(dir)), newd int32_t(dir));
+			}
+			direction_field->SetSelection(static_cast<Direction>(podium->getDirection()));
+			subsizer->Add(direction_field, wxSizerFlags(1).Expand());
+
+			// checkboxes
+			show_outfit = newd wxCheckBox(this, wxID_ANY, "Show outfit");
+			show_outfit->SetValue(podium->hasShowOutfit());
+			show_outfit->SetToolTip("Display outfit on the podium.");
+			subsizer->Add(show_outfit, 0, wxLEFT | wxTOP, 5);
+			subsizer->Add(newd wxStaticText(this, wxID_ANY, "")); // filler for checkboxes
+
+			show_mount = newd wxCheckBox(this, wxID_ANY, "Show mount");
+			show_mount->SetValue(podium->hasShowMount());
+			show_mount->SetToolTip("Display mount on the podium.");
+			subsizer->Add(show_mount, 0, wxLEFT | wxTOP, 5);
+			subsizer->Add(newd wxStaticText(this, wxID_ANY, ""));
+
+			show_platform = newd wxCheckBox(this, wxID_ANY, "Show platform");
+			show_platform->SetValue(podium->hasShowPlatform());
+			show_platform->SetToolTip("Display the podium platform.");
+			subsizer->Add(show_platform, 0, wxLEFT | wxTOP, 5);
+			subsizer->Add(newd wxStaticText(this, wxID_ANY, ""));
+
+			// outfit container
+			wxFlexGridSizer* outfitContainer = newd wxFlexGridSizer(2, 10, 10);
+			const Outfit& outfit = podium->getOutfit();
+
+			outfitContainer->Add(newd wxStaticText(this, wxID_ANY, "Outfit"));
+			outfitContainer->Add(newd wxStaticText(this, wxID_ANY, ""));
+
+			outfitContainer->Add(newd wxStaticText(this, wxID_ANY, "LookType"));
+			look_type = newd wxSpinCtrl(this, wxID_ANY, i2ws(outfit.lookType), wxDefaultPosition, wxSize(-1, 20), wxSP_ARROW_KEYS, 0, std::numeric_limits<uint16_t>::max(), outfit.lookType);
+			outfitContainer->Add(look_type, wxSizerFlags(3).Expand());
+
+			outfitContainer->Add(newd wxStaticText(this, wxID_ANY, "Head"));
+			look_head = newd wxSpinCtrl(this, wxID_ANY, i2ws(outfit.lookHead), wxDefaultPosition, wxSize(-1, 20), wxSP_ARROW_KEYS, 0, OUTFIT_COLOR_MAX, outfit.lookHead);
+			outfitContainer->Add(look_head, wxSizerFlags(3).Expand());
+
+			outfitContainer->Add(newd wxStaticText(this, wxID_ANY, "Body"));
+			look_body = newd wxSpinCtrl(this, wxID_ANY, i2ws(outfit.lookBody), wxDefaultPosition, wxSize(-1, 20), wxSP_ARROW_KEYS, 0, OUTFIT_COLOR_MAX, outfit.lookBody);
+			outfitContainer->Add(look_body, wxSizerFlags(3).Expand());
+
+			outfitContainer->Add(newd wxStaticText(this, wxID_ANY, "Legs"));
+			look_legs = newd wxSpinCtrl(this, wxID_ANY, i2ws(outfit.lookLegs), wxDefaultPosition, wxSize(-1, 20), wxSP_ARROW_KEYS, 0, OUTFIT_COLOR_MAX, outfit.lookLegs);
+			outfitContainer->Add(look_legs , wxSizerFlags(3).Expand());
+
+			outfitContainer->Add(newd wxStaticText(this, wxID_ANY, "Feet"));
+			look_feet = newd wxSpinCtrl(this, wxID_ANY, i2ws(outfit.lookFeet), wxDefaultPosition, wxSize(-1, 20), wxSP_ARROW_KEYS, 0, OUTFIT_COLOR_MAX, outfit.lookFeet);
+			outfitContainer->Add(look_feet, wxSizerFlags(3).Expand());
+
+			outfitContainer->Add(newd wxStaticText(this, wxID_ANY, "Addons"));
+			look_addon = newd wxSpinCtrl(this, wxID_ANY, i2ws(outfit.lookAddon), wxDefaultPosition, wxSize(-1, 20), wxSP_ARROW_KEYS, 0, 3, outfit.lookAddon);
+			outfitContainer->Add(look_addon, wxSizerFlags(3).Expand());
+
+			// mount container
+			wxFlexGridSizer* mountContainer = newd wxFlexGridSizer(2, 10, 10);
+
+			mountContainer->Add(newd wxStaticText(this, wxID_ANY, "Mount"));
+			mountContainer->Add(newd wxStaticText(this, wxID_ANY, ""));
+
+			mountContainer->Add(newd wxStaticText(this, wxID_ANY, "LookMount"));
+			look_mount = newd wxSpinCtrl(this, wxID_ANY, i2ws(outfit.lookMount), wxDefaultPosition, wxSize(-1, 20), wxSP_ARROW_KEYS, 0, std::numeric_limits<uint16_t>::max(), outfit.lookMount);
+			mountContainer->Add(look_mount, wxSizerFlags(3).Expand());
+
+			mountContainer->Add(newd wxStaticText(this, wxID_ANY, "Head"));
+			look_mounthead = newd wxSpinCtrl(this, wxID_ANY, i2ws(outfit.lookMountHead), wxDefaultPosition, wxSize(-1, 20), wxSP_ARROW_KEYS, 0, OUTFIT_COLOR_MAX, outfit.lookMountHead);
+			mountContainer->Add(look_mounthead, wxSizerFlags(3).Expand());
+
+			mountContainer->Add(newd wxStaticText(this, wxID_ANY, "Body"));
+			look_mountbody = newd wxSpinCtrl(this, wxID_ANY, i2ws(outfit.lookMountBody), wxDefaultPosition, wxSize(-1, 20), wxSP_ARROW_KEYS, 0, OUTFIT_COLOR_MAX, outfit.lookMountBody);
+			mountContainer->Add(look_mountbody, wxSizerFlags(3).Expand());
+
+			mountContainer->Add(newd wxStaticText(this, wxID_ANY, "Legs"));
+			look_mountlegs = newd wxSpinCtrl(this, wxID_ANY, i2ws(outfit.lookMountLegs), wxDefaultPosition, wxSize(-1, 20), wxSP_ARROW_KEYS, 0, OUTFIT_COLOR_MAX, outfit.lookMountLegs);
+			mountContainer->Add(look_mountlegs, wxSizerFlags(3).Expand());
+
+			mountContainer->Add(newd wxStaticText(this, wxID_ANY, "Feet"));
+			look_mountfeet = newd wxSpinCtrl(this, wxID_ANY, i2ws(outfit.lookMountFeet), wxDefaultPosition, wxSize(-1, 20), wxSP_ARROW_KEYS, 0, OUTFIT_COLOR_MAX, outfit.lookMountFeet);
+			mountContainer->Add(look_mountfeet, wxSizerFlags(3).Expand());
+
+			wxFlexGridSizer* propertiesContainer = newd wxFlexGridSizer(3, 10, 10);
+			propertiesContainer->Add(subsizer, wxSizerFlags(1).Expand());
+			propertiesContainer->Add(outfitContainer, wxSizerFlags(1).Expand());
+			propertiesContainer->Add(mountContainer, wxSizerFlags(1).Expand());
+			boxsizer->Add(propertiesContainer, wxSizerFlags(1).Expand());
+		} else {
+			boxsizer->Add(subsizer, wxSizerFlags(1).Expand());
+		}
+
 		topsizer->Add(boxsizer, wxSizerFlags(0).Expand().Border(wxLEFT | wxRIGHT, 20));
 	}
 
 	// Others attributes
+	// should have an option to turn it off
+	/*
 	const ItemType& type = g_items.getItemType(edit_item->getID());
 	wxStaticBoxSizer* others_sizer = newd wxStaticBoxSizer(wxVERTICAL, this, "Others");
 	wxFlexGridSizer* others_subsizer = newd wxFlexGridSizer(2, 5, 10);
@@ -342,11 +460,12 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 	others_subsizer->Add(newd wxStaticText(this, wxID_ANY, b2yn(type.hasElevation)));
 	others_sizer->Add(others_subsizer, wxSizerFlags(1).Expand());
 	topsizer->Add(others_sizer, wxSizerFlags(0).Expand().Border(wxLEFT | wxRIGHT | wxBOTTOM, 20));
+	*/
 
 	wxSizer* subsizer = newd wxBoxSizer(wxHORIZONTAL);
-	subsizer->Add(newd wxButton(this, wxID_OK, "OK"), wxSizerFlags(1).Center());
-	subsizer->Add(newd wxButton(this, wxID_CANCEL, "Cancel"), wxSizerFlags(1).Center());
-	topsizer->Add(subsizer, wxSizerFlags(0).Center().Border(wxLEFT | wxRIGHT | wxBOTTOM, 20));
+	subsizer->Add(newd wxButton(this, wxID_OK, "OK"), wxSizerFlags(1).Center().Border(wxTOP | wxBOTTOM, 10));
+	subsizer->Add(newd wxButton(this, wxID_CANCEL, "Cancel"), wxSizerFlags(1).Center().Border(wxTOP | wxBOTTOM, 10));
+	topsizer->Add(subsizer, wxSizerFlags(0).Center().Border(wxLEFT | wxRIGHT, 20));
 
 	SetSizerAndFit(topsizer);
 	Centre(wxBOTH);
@@ -359,6 +478,7 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 	action_id_field(nullptr),
 	unique_id_field(nullptr),
 	door_id_field(nullptr),
+	tier_field(nullptr),
 	depot_id_field(nullptr),
 	splash_type_field(nullptr),
 	text_field(nullptr),
@@ -395,9 +515,9 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 	//SetSize(220, 0);
 
 	wxSizer* std_sizer = newd wxBoxSizer(wxHORIZONTAL);
-	std_sizer->Add(newd wxButton(this, wxID_OK, "OK"), wxSizerFlags(1).Center());
-	std_sizer->Add(newd wxButton(this, wxID_CANCEL, "Cancel"), wxSizerFlags(1).Center());
-	topsizer->Add(std_sizer, wxSizerFlags(0).Center().Border(wxLEFT | wxRIGHT | wxBOTTOM, 20));
+	std_sizer->Add(newd wxButton(this, wxID_OK, "OK"), wxSizerFlags(1).Center().Border(wxTOP | wxBOTTOM, 10));
+	std_sizer->Add(newd wxButton(this, wxID_CANCEL, "Cancel"), wxSizerFlags(1).Center().Border(wxTOP | wxBOTTOM, 10));
+	topsizer->Add(std_sizer, wxSizerFlags(0).Center().Border(wxLEFT | wxRIGHT, 20));
 
 	SetSizerAndFit(topsizer);
 	Centre(wxBOTH);
@@ -410,6 +530,7 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 	action_id_field(nullptr),
 	unique_id_field(nullptr),
 	door_id_field(nullptr),
+	tier_field(nullptr),
 	depot_id_field(nullptr),
 	splash_type_field(nullptr),
 	text_field(nullptr),
@@ -435,9 +556,9 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 	topsizer->Add(boxsizer, wxSizerFlags(3).Expand().Border(wxALL, 20));
 
 	wxSizer* std_sizer = newd wxBoxSizer(wxHORIZONTAL);
-	std_sizer->Add(newd wxButton(this, wxID_OK, "OK"), wxSizerFlags(1).Center());
-	std_sizer->Add(newd wxButton(this, wxID_CANCEL, "Cancel"), wxSizerFlags(1).Center());
-	topsizer->Add(std_sizer, wxSizerFlags(0).Center().Border(wxLEFT | wxRIGHT | wxBOTTOM, 20));
+	std_sizer->Add(newd wxButton(this, wxID_OK, "OK"), wxSizerFlags(1).Center().Border(wxTOP | wxBOTTOM, 10));
+	std_sizer->Add(newd wxButton(this, wxID_CANCEL, "Cancel"), wxSizerFlags(1).Center().Border(wxTOP | wxBOTTOM, 10));
+	topsizer->Add(std_sizer, wxSizerFlags(0).Center().Border(wxLEFT | wxRIGHT, 20));
 
 	SetSizerAndFit(topsizer);
 	Centre(wxBOTH);
@@ -561,10 +682,13 @@ void OldPropertiesWindow::OnClickOK(wxCommandEvent& WXUNUSED(event))
 			// Normal item
 			Door* door = dynamic_cast<Door*>(edit_item);
 			Teleport* teleport = dynamic_cast<Teleport*>(edit_item);
+			Podium* podium = dynamic_cast<Podium*>(edit_item);
 
 			int new_uid = unique_id_field->GetValue();
 			int new_aid = action_id_field->GetValue();
-			int new_count = count_field? count_field->GetValue() : 1;
+			int new_count = count_field ? count_field->GetValue() : 1;
+			int new_tier = tier_field ? tier_field->GetValue() : 0;
+
 			std::string new_desc;
 			if(edit_item->canHoldDescription() && description_field) {
 				description_field->GetValue();
@@ -588,6 +712,10 @@ void OldPropertiesWindow::OnClickOK(wxCommandEvent& WXUNUSED(event))
 			}
 			if((new_aid < 100 || new_aid > 0xFFFF) && new_aid != 0) {
 				g_gui.PopupDialog(this, "Error", "Action ID must be between 100 and 65535.", wxOK);
+				return;
+			}
+			if (new_tier < 0 || new_tier > 0xFF) {
+				g_gui.PopupDialog(this, "Error", "Item tier must be between 0 and 255.", wxOK);
 				return;
 			}
 
@@ -626,6 +754,59 @@ void OldPropertiesWindow::OnClickOK(wxCommandEvent& WXUNUSED(event))
 				}
 			}
 
+			Outfit& newOutfit = Outfit();
+			if (podium) {
+				int newLookType = look_type->GetValue();
+				int newMount = look_mount->GetValue();
+
+				if (newLookType < 0 || newLookType > 0xFFFF || newMount < 0 || newMount > 0xFFFF) {
+					g_gui.PopupDialog(this, "Error", "LookType and Mount must be between 0 and 65535.", wxOK);
+					return;
+				}
+
+				int newHead = look_head->GetValue();
+				int newBody = look_body->GetValue();
+				int newLegs = look_legs->GetValue();
+				int newFeet = look_feet->GetValue();
+				int newMountHead = look_mounthead->GetValue();
+				int newMountBody = look_mountbody->GetValue();
+				int newMountLegs = look_mountlegs->GetValue();
+				int newMountFeet = look_mountfeet->GetValue();
+
+				if (newHead < 0 || newHead > OUTFIT_COLOR_MAX ||
+					newBody < 0 || newBody > OUTFIT_COLOR_MAX ||
+					newLegs < 0 || newLegs > OUTFIT_COLOR_MAX ||
+					newFeet < 0 || newFeet > OUTFIT_COLOR_MAX ||
+					newMountHead < 0 || newMountHead > OUTFIT_COLOR_MAX ||
+					newMountBody < 0 || newMountBody > OUTFIT_COLOR_MAX ||
+					newMountLegs < 0 || newMountLegs > OUTFIT_COLOR_MAX ||
+					newMountFeet < 0 || newMountFeet > OUTFIT_COLOR_MAX
+					) {
+					wxString response = "Outfit and mount colors must be between 0 and ";
+					response << i2ws(OUTFIT_COLOR_MAX) << ".";
+					g_gui.PopupDialog(this, "Error", response, wxOK);
+					return;
+				}
+
+				int newAddon = look_addon->GetValue();
+				if (newAddon < 0 || newAddon > 3) {
+					g_gui.PopupDialog(this, "Error", "Addons value must be between 0 and 3.", wxOK);
+					return;
+				}
+
+				newOutfit.lookType = newLookType;
+				newOutfit.lookHead = newHead;
+				newOutfit.lookBody = newBody;
+				newOutfit.lookLegs = newLegs;
+				newOutfit.lookFeet = newFeet;
+				newOutfit.lookAddon = newAddon;
+				newOutfit.lookMount = newMount;
+				newOutfit.lookMountHead = newMountHead;
+				newOutfit.lookMountBody = newMountBody;
+				newOutfit.lookMountLegs = newMountLegs;
+				newOutfit.lookMountFeet = newMountFeet;
+			}
+
 			// Done validating, set the values.
 			if(edit_item->canHoldDescription()) {
 				edit_item->setText(new_desc);
@@ -639,9 +820,21 @@ void OldPropertiesWindow::OnClickOK(wxCommandEvent& WXUNUSED(event))
 			if(teleport) {
 				teleport->setDestination(new_dest);
 			}
+			if(podium) {
+				podium->setShowOutfit(show_outfit->GetValue());
+				podium->setShowMount(show_mount->GetValue());
+				podium->setShowPlatform(show_platform->GetValue());
 
+				int* new_dir = reinterpret_cast<int*>(direction_field->GetClientData(direction_field->GetSelection()));
+				if (new_dir) {
+					podium->setDirection((Direction)*new_dir);
+				}
+
+				podium->setOutfit(newOutfit);
+			}
 			edit_item->setUniqueID(new_uid);
 			edit_item->setActionID(new_aid);
+			edit_item->setTier(new_tier);
 		}
 	} else if(edit_creature) {
 		int new_spawntime = count_field->GetValue();

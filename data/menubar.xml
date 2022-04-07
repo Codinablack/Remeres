@@ -69,7 +69,7 @@
         <item name="Edit $Items" hotkey="Ctrl+I" action="EDIT_ITEMS" help="Edit items."/>
         <item name="Edit $Monsters" action="EDIT_MONSTERS" help="Edit monsters."/>
         <separator/>
-        <item name="$Cleanup..." action="MAP_CLEANUP" help="Removes all unknown items from the map."/>
+        <item name="$Cleanup..." action="MAP_CLEANUP" help="Removes all items that do not exist in the OTB file (red tiles the server can't load)."/>
         <item name="$Properties..." hotkey="Ctrl+P" action="MAP_PROPERTIES" help="Show and change the map properties."/>
         <item name="$Statistics" hotkey="F8" action="MAP_STATISTICS" help="Show map statistics."/>
     </menu>

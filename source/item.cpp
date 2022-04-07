@@ -46,6 +46,8 @@ Item* Item::Create(uint16_t _type, uint16_t _subtype /*= 0xFFFF*/)
 			newItem = newd Teleport(_type);
 		} else if(it.isDoor()) {
 			newItem = newd Door(_type);
+		} else if(it.isPodium()) {
+			newItem = newd Podium(_type);
 		} else if(_subtype == 0xFFFF) {
 			if(it.isFluidContainer()) {
 				newItem = newd Item(_type, LIQUID_NONE);
@@ -264,6 +266,11 @@ void Item::setText(const std::string& str)
 void Item::setDescription(const std::string& str)
 {
 	setAttribute("desc", str);
+}
+
+void Item::setTier(unsigned short n)
+{
+	setAttribute("tier", n);
 }
 
 double Item::getWeight()
